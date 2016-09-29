@@ -49,14 +49,17 @@ import org.apache.solr.search.SyntaxError;
  *
  *
  * The "parentFilter" parameter is mandatory.
- * Optionally you can provide a "childFilter" param to filter out which child documents should be returned and a
- * "limit" param which provides an option to specify the number of child documents
- * to be returned per parent document. By default it's set to 10.
+ * Optionally you can provide:
+ *  * "childFilter" param to filter out which child documents should be returned
+ *  * "limit" param which provides an option to specify the number of child documents to be returned per parent document.
+ *  By default it's set to 10.
+ *  * "offset" param which provides an option to specify the number of child documents to skip. It's zero-based
+ *  and by default is set to 0.
  *
  * Examples -
  * [child parentFilter="fieldName:fieldValue"]
  * [child parentFilter="fieldName:fieldValue" childFilter="fieldName:fieldValue"]
- * [child parentFilter="fieldName:fieldValue" childFilter="fieldName:fieldValue" limit=20]
+ * [child parentFilter="fieldName:fieldValue" childFilter="fieldName:fieldValue" offset=20 limit=20]
  */
 public class ChildDocTransformerFactory extends TransformerFactory {
 
@@ -74,6 +77,7 @@ public class ChildDocTransformerFactory extends TransformerFactory {
     }
 
     String childFilter = params.get( "childFilter" );
+    int offset = params.getInt( "offset", 0 );
     int limit = params.getInt( "limit", 10 );
 
     BitSetProducer parentsFilter = null;
@@ -93,7 +97,7 @@ public class ChildDocTransformerFactory extends TransformerFactory {
       }
     }
 
-    return new ChildDocTransformer( field, parentsFilter, uniqueKeyField, req.getSchema(), childFilterQuery, limit);
+    return new ChildDocTransformer( field, parentsFilter, uniqueKeyField, req.getSchema(), childFilterQuery, offset, limit);
   }
 }
 
@@ -103,16 +107,18 @@ class ChildDocTransformer extends TransformerWithContext {
   private final IndexSchema schema;
   private BitSetProducer parentsFilter;
   private Query childFilterQuery;
+  private int offset;
   private int limit;
 
   public ChildDocTransformer( String name, final BitSetProducer parentsFilter, 
                               final SchemaField idField, IndexSchema schema,
-                              final Query childFilterQuery, int limit) {
+                              final Query childFilterQuery, int offset, int limit) {
     this.name = name;
     this.idField = idField;
     this.schema = schema;
     this.parentsFilter = parentsFilter;
     this.childFilterQuery = childFilterQuery;
+    this.offset = offset;
     this.limit = limit;
   }
 
@@ -134,7 +140,7 @@ class ChildDocTransformer extends TransformerWithContext {
     try {
       Query parentQuery = idFt.getFieldQuery(null, idField, parentIdExt);
       Query query = new ToChildBlockJoinQuery(parentQuery, parentsFilter);
-      DocList children = context.searcher.getDocList(query, childFilterQuery, new Sort(), 0, limit);
+      DocList children = context.searcher.getDocList(query, childFilterQuery, new Sort(), offset, limit);
       if(children.matches() > 0) {
         DocIterator i = children.iterator();
         while(i.hasNext()) {
